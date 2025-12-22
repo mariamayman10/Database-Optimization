@@ -15,7 +15,8 @@ async function insert_users() {
     const values = [];
     for(let j = 0; j < BATCH_SIZE; j++){
       const email = `user${i+j+1}@gmail.com`;
-      values.push(`('${email}', NOW())`);
+      const created_at = randomDate();
+      values.push(`('${email}', '${created_at.toISOString()}')`);
     }
     const query = `INSERT INTO users (email, created_at) VALUES ${values.join(',')}`;
     await pool.query(query);
@@ -39,7 +40,11 @@ async function insert_orders() {
     for(let j = 0; j < BATCH_SIZE; j++){
       const user_id = Math.floor(Math.random() * TOTAL_USERS) + 1;
       const created_at = randomDate();
-      values.push(`(${user_id}, '${created_at.toISOString()}', 'completed')`);
+      let status = 'completed';
+      const rand = Math.random();
+      if (rand < 0.1) status = 'pending';
+      else if (rand < 0.2) status = 'canceled';
+      values.push(`(${user_id}, '${created_at.toISOString()}', '${status}')`);
     }
     const query = `INSERT INTO orders (user_id, created_at, status) VALUES ${values.join(',')}`; 
     await pool.query(query);
