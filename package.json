@@ -1,0 +1,13 @@
+{
+  "name": "db_performance",
+  "version": "1.0.0",
+  "description": "PostgreSQL performance optimization lab using Node.js",
+  "type": "module",
+  "scripts": {
+    "fill": "node scripts/fill_db.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3"
+  }
+}
