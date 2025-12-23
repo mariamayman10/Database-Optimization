@@ -42,6 +42,7 @@ A JavaScript script was used to randomly generate data. The final dataset contai
 - 100,000 Users  
 - 10,000 Products  
 - 2,500,000 Orders
+- 7,500,000 Order Items
 
 ---
 
