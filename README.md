@@ -160,7 +160,7 @@ LIMIT 5;
 
 ### 4.2. Optimizing Query 2
 
-Original Query 1 execution: 1.5s  
+Original Query 2 execution: 1.5s  
 
 **Optimization Steps:**
 
@@ -178,5 +178,32 @@ Original Query 1 execution: 1.5s
 2. Create a materialized view (product_sold).
    - Execution time: 0.04s
    - Trade-off: Similar storage and maintenance costs, but easier to refresh periodically.
+  
+### 4.3. Optimizing Query 3
+
+Original Query 3 execution: 13s  
+
+In this query, the main bottlenecks are:
+
+1. Joining Orders and OrderItems  
+   - Although we can create an index on the join columns, it is not very effective in this case.
+   - The query performs a computation on the created_at column in the Orders table.
+   - Because of this computation, the query planner ends up using a sequential scan instead of benefiting from the index.
+
+2. Grouping by a computed value  
+   - The query groups by a computed value (DATE_TRUNC('month', o.created_at)) rather than a physical column.
+   - Creating an index on DATE_TRUNC('month', created_at) does not significantly improve performance.
+   - In practice, sequential scanning and index usage have nearly the same cost for this operation.
+
+### Final Optimization
+
+For this query, the best solution is to create a **materialized view** that stores the precomputed monthly orders and revenue data.
+
+Materialized View: `month_orders_revenue`
+
+- Execution time after optimization: **0.04s**
+
+This approach provides the best performance for live dashboard usage, at the cost of additional storage and periodic refresh requirements.
+
 ---
 
