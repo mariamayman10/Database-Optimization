@@ -111,9 +111,13 @@ ORDER BY month_start;
 - Medium Performance: Q2, Q6  
 - Fast Queries: Q5, Q7, Q9, Q10  
 
----
+The next step is to optimize the remaining queries. It is assumed that all of these queries are used in a **live dashboard**, not for monthly or offline reports. Therefore, the goal is to achieve the **lowest possible execution time**.
 
-## 5. Optimizing Query 1
+For queries that are executed in real time, techniques such as summary tables or materialized views are preferred to ensure fast responses.
+
+However, if any of these queries are executed infrequently (for example, once per month for reporting purposes), then **adding proper indexes and rewriting the queries** is usually sufficient, without the need for additional storage or maintenance overhead.
+
+### 4.1. Optimizing Query 1
 
 Original Query 1 execution: 8s  
 
@@ -153,5 +157,26 @@ LIMIT 5;
    - Execution time: 0.05s  
    - Trade-off: Similar to summary table, but easier to refresh periodically.
 
+
+### 4.2. Optimizing Query 2
+
+Original Query 1 execution: 1.5s  
+
+**Optimization Steps:**
+
+1. Create an index on the product_id column in OrderItems to speed up the join.
+
+- Execution time after index: almost no improvement.
+- Reason: Even with an index on product_id, PostgreSQL still needs to scan and aggregate all rows in the OrderItems table to calculate total quantities. The index helps with lookups, but it does not reduce the total number of rows that must be processed. Therefore, indexing alone is not sufficient in this case.
+
+**Further Optimization Options:**
+
+1. Create a summary table (product_sold) that stores total quantity sold per product.
+   - Execution time: 0.04s
+   - Trade-off: Requires additional storage and maintenance when new orders are inserted.
+
+2. Create a materialized view (product_sold).
+   - Execution time: 0.04s
+   - Trade-off: Similar storage and maintenance costs, but easier to refresh periodically.
 ---
 
