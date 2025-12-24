@@ -195,7 +195,7 @@ In this query, the main bottlenecks are:
    - Creating an index on DATE_TRUNC('month', created_at) does not significantly improve performance.
    - In practice, sequential scanning and index usage have nearly the same cost for this operation.
 
-### Final Optimization
+#### Final Optimization
 
 For this query, the best solution is to create a **materialized view** that stores the precomputed monthly orders and revenue data.
 
