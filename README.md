@@ -6,6 +6,7 @@ This project demonstrates creating a database, populating it with test data, exe
 
 ## 1. Database Schema
 
+```
 CREATE TABLE Users (
     id BIGSERIAL PRIMARY KEY,
     email TEXT,
@@ -32,6 +33,7 @@ CREATE TABLE OrderItems (
     quantity NUMERIC NOT NULL,
     price NUMERIC NOT NULL
 );
+```
 
 ---
 
@@ -67,6 +69,7 @@ A JavaScript script was used to randomly generate data. The final dataset contai
 
 #### 1. Top 5 Spending Customers in 2023
 
+```
 SELECT u.id, u.email, COUNT(DISTINCT o.id) AS total_orders, SUM(oi.price * oi.quantity) AS total_spent
 FROM Users u 
 JOIN Orders o ON u.id = o.user_id 
@@ -75,18 +78,22 @@ WHERE EXTRACT(YEAR FROM o.created_at) = 2023 AND o.status = 'completed'
 GROUP BY u.id, u.email
 ORDER BY total_spent DESC
 LIMIT 5;
+```
 
 #### 2. Top 10 Sold Products
 
+```
 SELECT p.name, SUM(oi.quantity) AS total_sold
 FROM OrderItems oi 
 JOIN Products p ON oi.product_id = p.id
 GROUP BY p.id, p.name
 ORDER BY total_sold DESC
 LIMIT 10;
+```
 
 #### 3. Orders Count per Month
 
+```
 SELECT DATE_TRUNC('month', o.created_at) AS month_start,
        COUNT(o.id) AS total_orders,
        SUM(oi.quantity * oi.price) AS total_revenue
@@ -94,6 +101,7 @@ FROM Orders o
 JOIN OrderItems oi ON o.id = oi.order_id
 GROUP BY month_start
 ORDER BY month_start;
+```
 
 ---
 
@@ -116,7 +124,7 @@ Original Query 1 execution: 8s
 3. Use a date range instead of EXTRACT(YEAR ...) to leverage the index.  
 
 **Optimized Query:**
-
+```
 WITH order_spent AS (
     SELECT o.id, o.user_id, SUM(oi.price * oi.quantity) AS spent
     FROM Orders o 
@@ -131,6 +139,7 @@ JOIN order_spent os ON os.user_id = u.id
 GROUP BY u.id, u.email
 ORDER BY total_spent DESC
 LIMIT 5;
+```
 
 - Execution time after index and query rewrite: 3.5s  
 
