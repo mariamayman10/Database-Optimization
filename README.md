@@ -43,7 +43,7 @@ A JavaScript script was used to randomly generate data. The final dataset contai
 
 - 100,000 Users  
 - 10,000 Products  
-- 2,500,000 Orders
+- 2,500,000 Orders  
 - 7,500,000 Order Items
 
 ---
@@ -57,7 +57,7 @@ A JavaScript script was used to randomly generate data. The final dataset contai
 | Q3    | Orders count per month | 13s |
 | Q4    | Average order value per user | 16.2s |
 | Q5    | Users with orders not completed | 0.8s |
-| Q6    | Revenue per product | 0.2s |
+| Q6    | Revenue per product | 2.4s |
 | Q7    | Number of orders per user in the last 30 days | 0.5s |
 | Q8    | Orders with total price exceeding 2000 | 11s |
 | Q9    | Products never sold | 0.9s |
@@ -117,6 +117,8 @@ For queries that are executed in real time, techniques such as summary tables or
 
 However, if any of these queries are executed infrequently (for example, once per month for reporting purposes), then **adding proper indexes and rewriting the queries** is usually sufficient, without the need for additional storage or maintenance overhead.
 
+---
+
 ### 4.1. Optimizing Query 1
 
 Original Query 1 execution: 8s  
@@ -157,6 +159,7 @@ LIMIT 5;
    - Execution time: 0.05s  
    - Trade-off: Similar to summary table, but easier to refresh periodically.
 
+---
 
 ### 4.2. Optimizing Query 2
 
@@ -166,44 +169,168 @@ Original Query 2 execution: 1.5s
 
 1. Create an index on the product_id column in OrderItems to speed up the join.
 
-- Execution time after index: almost no improvement.
-- Reason: Even with an index on product_id, PostgreSQL still needs to scan and aggregate all rows in the OrderItems table to calculate total quantities. The index helps with lookups, but it does not reduce the total number of rows that must be processed. Therefore, indexing alone is not sufficient in this case.
+- Execution time after index: almost no improvement.  
+- Reason: Even with an index on product_id, PostgreSQL still needs to scan and aggregate all rows in the OrderItems table to calculate total quantities. Indexing alone does not reduce the number of rows to process.
 
 **Further Optimization Options:**
 
-1. Create a summary table (product_sold) that stores total quantity sold per product.
-   - Execution time: 0.04s
-   - Trade-off: Requires additional storage and maintenance when new orders are inserted.
+1. Create a summary table (product_sold) that stores total quantity sold per product.  
+   - Execution time: 0.04s  
+   - Trade-off: Requires additional storage and maintenance.  
 
-2. Create a materialized view (product_sold).
-   - Execution time: 0.04s
-   - Trade-off: Similar storage and maintenance costs, but easier to refresh periodically.
-  
+2. Create a materialized view (product_sold).  
+   - Execution time: 0.04s  
+   - Trade-off: Similar storage and maintenance costs, easier to refresh periodically.
+
+---
+
 ### 4.3. Optimizing Query 3
 
 Original Query 3 execution: 13s  
 
-In this query, the main bottlenecks are:
+**Bottlenecks:**
 
 1. Joining Orders and OrderItems  
-   - Although we can create an index on the join columns, it is not very effective in this case.
-   - The query performs a computation on the created_at column in the Orders table.
-   - Because of this computation, the query planner ends up using a sequential scan instead of benefiting from the index.
+   - Indexes on join columns are not very effective due to full-table aggregations.  
+   - Computations on `created_at` prevent index usage.  
 
-2. Grouping by a computed value  
-   - The query groups by a computed value (DATE_TRUNC('month', o.created_at)) rather than a physical column.
-   - Creating an index on DATE_TRUNC('month', created_at) does not significantly improve performance.
-   - In practice, sequential scanning and index usage have nearly the same cost for this operation.
+2. Grouping by a computed value (`DATE_TRUNC('month', o.created_at)`)  
+   - Creating an index on `DATE_TRUNC(...)` has negligible effect.  
 
-#### Final Optimization
+**Final Optimization:**
 
-For this query, the best solution is to create a **materialized view** that stores the precomputed monthly orders and revenue data.
+Create a **materialized view** storing precomputed monthly orders and revenue:
 
-Materialized View: `month_orders_revenue`
+```
+CREATE MATERIALIZED VIEW month_orders_revenue AS
+SELECT DATE_TRUNC('month', o.created_at) AS month_start,
+       COUNT(o.id) AS total_orders,
+       SUM(oi.quantity * oi.price) AS total_revenue
+FROM Orders o
+JOIN OrderItems oi ON o.id = oi.order_id
+GROUP BY month_start;
+```
 
-- Execution time after optimization: **0.04s**
+- Execution time after optimization: **0.04s**  
 
-This approach provides the best performance for live dashboard usage, at the cost of additional storage and periodic refresh requirements.
+> Provides fast dashboard queries at the cost of extra storage and periodic refresh.
 
 ---
+
+### 4.4. Optimizing Query 4
+
+Original Query 4 execution: 16s  
+
+**Bottlenecks:**
+
+- Joining Orders and OrderItems over millions of rows  
+- Nested aggregation: per-order totals, then per-user average  
+- Joining with Users adds additional aggregation overhead  
+
+**Final Optimization:**
+
+Step 1: Materialized view for per-order totals
+
+```
+CREATE MATERIALIZED VIEW order_total AS
+WITH order_totals AS (
+    SELECT o.id, o.user_id, SUM(oi.quantity * oi.price) AS order_total
+    FROM Orders o
+    JOIN OrderItems oi ON o.id = oi.order_id
+    GROUP BY o.id
+)
+SELECT *
+FROM order_totals;
+```
+
+- Execution time: 1.4s  
+
+Step 2: Index on `user_id` column of the view
+
+```
+CREATE INDEX idx_order_total_user_id ON order_total(user_id);
+```
+
+- Execution time: 1.2s  
+
+Step 3: Precompute per-user average in a new materialized view
+
+```
+CREATE MATERIALIZED VIEW user_order_stats AS
+WITH order_totals AS (
+    SELECT o.user_id, SUM(oi.quantity * oi.price) AS order_total
+    FROM Orders o
+    JOIN OrderItems oi ON o.id = oi.order_id
+    GROUP BY o.id
+)
+SELECT user_id, AVG(order_total) AS avg_order_val
+FROM order_totals
+GROUP BY user_id;
+```
+
+- Execution time: 0.1s  
+
+**Notes:**
+
+- Indexes improve joins, but the **largest performance gains come from precomputing aggregates**.  
+- This approach supports near-instant dashboard queries while requiring extra storage and periodic refresh.
+
+### 4.5. Optimizing Query 6
+
+Original Query 6 execution: 2.4s  
+
+**Observation:**
+
+- Creating an index on `product_id` in `OrderItems` does **not significantly improve performance**.  
+- PostgreSQL still needs to perform a sequential scan and aggregate all rows to compute revenue per product.
+
+**Final Optimization:**
+
+Create a **materialized view** storing revenue per product:
+
+```
+CREATE MATERIALIZED VIEW product_revenue AS
+SELECT p.id, p.name, SUM(oi.quantity * oi.price) AS revenue
+FROM Products p
+JOIN OrderItems oi ON p.id = oi.product_id
+GROUP BY p.id, p.name;
+```
+
+- Execution time after using the view: **0.04s**  
+
+**Usage Example:**
+
+```
+SELECT *
+FROM product_revenue
+WHERE revenue > 2000;
+```
+
+---
+
+### 4.6. Optimizing Query 8
+
+Original Query 8 execution: 11s  
+
+**Observation:**
+
+- The query calculates total price per order on-the-fly over millions of rows.  
+- Indexes on join columns help very little because the aggregation still requires scanning all `OrderItems`.
+
+**Final Optimization:**
+
+Reuse the **materialized view `order_total`** created in Query 4:
+
+```
+SELECT *
+FROM order_total
+WHERE order_total >= 2000;
+```
+
+- Execution time after using the materialized view: **0.3s**  
+
+**Notes:**
+
+- Precomputing order totals reduces expensive runtime aggregation.  
+- Indexes could further improve filtering, but the materialized view alone already provides a large performance gain.
 
