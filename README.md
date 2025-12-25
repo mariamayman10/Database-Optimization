@@ -300,6 +300,8 @@ GROUP BY user_id;
 - Indexes improve joins, but the **largest performance gains come from precomputing aggregates**.  
 - This approach supports near-instant dashboard queries while requiring extra storage and periodic refresh.
 
+---
+
 ### 4.5. Optimizing Query 6
 
 Original Query 6 execution: 2.4s  
