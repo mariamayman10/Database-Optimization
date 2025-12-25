@@ -149,6 +149,31 @@ LIMIT 5;
 
 - Execution time after index and query rewrite: 3.5s  
 
+#### EXPLAIN ANALYZE – Query 1 (Top Spending Customers)
+
+**Before Optimization**
+
+Analysis of the execution plan revealed the following bottlenecks:
+
+- Sequential scan on `order_items` (~2.5 million rows) executed multiple times
+- Sequential scan on `orders`, caused by filtering with `EXTRACT(YEAR FROM created_at)`
+- Large hash joins across millions of rows
+- High CPU and memory usage due to full-table aggregation
+
+---
+
+**After Adding Index on `order_items(order_id)`**
+
+Key improvements observed in the execution plan:
+
+- Index Scan using idx_order_items_order_id replaced full table scans on order_items
+
+- Join strategy changed from Hash Join to Nested Loop
+
+- Reduction in the number of rows scanned per join operation
+
+Despite these improvements, the query was still limited by expensive aggregation over a large result set
+
 **Further Optimization Options:**
 
 1. Summary Table: Precompute order_spent and update on new orders.  
